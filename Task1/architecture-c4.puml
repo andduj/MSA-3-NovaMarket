@@ -1,0 +1,79 @@
+@startuml NovaMarket C4 Container Diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title NovaMarket - Container Diagram (C4 Level 2)
+
+Person(customer, "Покупатель", "Пользователь мобильного приложения")
+Person(seller, "Продавец", "Продавец товаров на платформе")
+
+System_Boundary(novamarket, "NovaMarket Platform") {
+    Container(mobile_app, "Мобильное приложение", "React Native", "Предоставляет интерфейс для покупателей")
+    Container(api_gateway, "API Gateway", "NGINX", "Маршрутизация запросов, аутентификация, rate limiting")
+    
+    Container(catalog_service, "Catalog Service", "Kotlin, Spring Boot", "Управление каталогом товаров, поиск, фильтрация")
+    Container(order_service, "Order Service", "Kotlin, Spring Boot", "Управление заказами, корзина, статусы")
+    Container(payment_service, "Payment Service", "Kotlin, Spring Boot", "Обработка платежей, интеграция с платежными системами")
+    Container(inventory_service, "Inventory Service", "Kotlin, Spring Boot", "Управление остатками товаров, резервирование")
+    Container(notification_service, "Notification Service", "Kotlin, Spring Boot", "Отправка уведомлений продавцам и покупателям")
+    Container(delivery_service, "Delivery Service", "Kotlin, Spring Boot", "Интеграция с логистическими провайдерами")
+    Container(user_service, "User Service", "Kotlin, Spring Boot", "Управление пользователями, аутентификация")
+    
+    ContainerDb(catalog_db, "Catalog Database", "PostgreSQL", "Хранение данных о товарах, категориях, отзывах")
+    ContainerDb(order_db, "Order Database", "PostgreSQL", "Хранение заказов, корзин, статусов")
+    ContainerDb(payment_db, "Payment Database", "PostgreSQL", "Хранение платежных данных, транзакций")
+    ContainerDb(inventory_db, "Inventory Database", "PostgreSQL", "Хранение остатков товаров")
+    ContainerDb(user_db, "User Database", "PostgreSQL", "Хранение данных пользователей")
+    
+    Container(kafka, "Event Broker", "Apache Kafka", "Центральный брокер событий для межсервисного взаимодействия")
+}
+
+System_Ext(payment_gateway, "Payment Gateway", "Внешний платежный шлюз")
+System_Ext(logistics_provider, "Logistics Provider", "Внешний логистический провайдер")
+
+' Пользовательские взаимодействия
+Rel(customer, mobile_app, "Использует", "HTTPS")
+Rel(seller, notification_service, "Получает уведомления", "Email/SMS")
+
+' API Gateway взаимодействия
+Rel(mobile_app, api_gateway, "API calls", "HTTPS/JSON")
+Rel(api_gateway, catalog_service, "Запросы каталога", "HTTP/JSON")
+Rel(api_gateway, order_service, "Запросы заказов", "HTTP/JSON")
+Rel(api_gateway, user_service, "Аутентификация", "HTTP/JSON")
+
+' Событийные взаимодействия (Вариант 1 - с явными топиками)
+Rel(order_service, kafka, "Публикует OrderCreated", "Kafka")
+Rel(kafka, inventory_service, "Потребляет OrderCreated", "Kafka")
+Rel(kafka, notification_service, "Потребляет OrderCreated", "Kafka")
+
+Rel(inventory_service, kafka, "Публикует InventoryReserved", "Kafka")
+Rel(kafka, order_service, "Потребляет InventoryReserved", "Kafka")
+
+Rel(order_service, kafka, "Публикует OrderReadyForPayment", "Kafka")
+Rel(kafka, payment_service, "Потребляет OrderReadyForPayment", "Kafka")
+
+Rel(payment_service, kafka, "Публикует PaymentSucceeded", "Kafka")
+Rel(kafka, order_service, "Потребляет PaymentSucceeded", "Kafka")
+Rel(kafka, delivery_service, "Потребляет PaymentSucceeded", "Kafka")
+Rel(kafka, notification_service, "Потребляет PaymentSucceeded", "Kafka")
+
+Rel(delivery_service, kafka, "Публикует DeliveryRequested", "Kafka")
+Rel(kafka, notification_service, "Потребляет DeliveryRequested", "Kafka")
+
+Rel(delivery_service, kafka, "Публикует OrderStatusUpdated", "Kafka")
+Rel(kafka, order_service, "Потребляет OrderStatusUpdated", "Kafka")
+Rel(kafka, notification_service, "Потребляет OrderStatusUpdated", "Kafka")
+
+' Прямые взаимодействия с внешними системами
+Rel(payment_service, payment_gateway, "Обработка платежей", "HTTPS/API")
+Rel(delivery_service, logistics_provider, "Создание заявок на доставку", "HTTPS/API")
+
+' Базы данных
+Rel(catalog_service, catalog_db, "Читает/записывает", "SQL")
+Rel(order_service, order_db, "Читает/записывает", "SQL")
+Rel(payment_service, payment_db, "Читает/записывает", "SQL")
+Rel(inventory_service, inventory_db, "Читает/записывает", "SQL")
+Rel(user_service, user_db, "Читает/записывает", "SQL")
+
+@enduml
