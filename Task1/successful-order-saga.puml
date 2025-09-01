@@ -1,0 +1,69 @@
+@startuml Successful Order Saga
+!theme plain
+title Успешный сценарий оформления заказа - Saga-хореография
+
+participant "Mobile App" as MA
+participant "Order Service" as OS
+participant "Inventory Service" as IS
+participant "Payment Service" as PS
+participant "Delivery Service" as DS
+participant "Notification Service" as NS
+participant "Kafka" as K
+
+== Создание заказа ==
+MA -> OS: POST /orders (создание заказа)
+OS -> OS: Сохранение заказа в БД
+OS -> K: OrderCreated
+K -> IS: OrderCreated
+K -> NS: OrderCreated
+
+== Проверка и резервирование товаров ==
+IS -> IS: Проверка остатков
+IS -> IS: Резервирование товаров
+IS -> K: InventoryReserved
+K -> OS: InventoryReserved
+OS -> OS: Обновление статуса заказа
+
+== Подготовка к оплате ==
+OS -> K: OrderReadyForPayment
+K -> PS: OrderReadyForPayment
+PS -> PS: Создание платежной сессии
+
+== Оплата ==
+MA -> PS: POST /payments (данные карты)
+PS -> PS: Обработка платежа
+PS -> PS: Сохранение транзакции
+PS -> K: PaymentSucceeded
+K -> OS: PaymentSucceeded
+K -> DS: PaymentSucceeded
+K -> NS: PaymentSucceeded
+
+== Обработка успешной оплаты ==
+OS -> OS: Обновление статуса на "Оплачен"
+DS -> DS: Создание заявки на доставку
+DS -> DS: Интеграция с логистическим провайдером
+DS -> K: DeliveryRequested
+K -> NS: DeliveryRequested
+
+== Уведомления ==
+NS -> NS: Отправка уведомления продавцу
+NS -> NS: Отправка уведомления покупателю
+
+== Обновление статуса ==
+DS -> K: OrderStatusUpdated
+K -> OS: OrderStatusUpdated
+K -> NS: OrderStatusUpdated
+
+OS -> MA: 200 OK (заказ создан)
+
+note right of OS
+  Статусы заказа:
+  1. "Создан"
+  2. "Товары зарезервированы"
+  3. "Ожидает оплаты"
+  4. "Оплачен"
+  5. "Передан в доставку"
+  6. "Доставлен"
+end note
+
+@enduml

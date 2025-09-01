@@ -1,0 +1,101 @@
+@startuml Failed Order Saga
+!theme plain
+title Ошибочный сценарий оформления заказа - Saga-хореография с компенсацией
+
+participant "Mobile App" as MA
+participant "Order Service" as OS
+participant "Inventory Service" as IS
+participant "Payment Service" as PS
+participant "Notification Service" as NS
+participant "Kafka" as K
+
+== Создание заказа ==
+MA -> OS: POST /orders (создание заказа)
+OS -> OS: Сохранение заказа в БД
+OS -> K: OrderCreated
+K -> IS: OrderCreated
+K -> NS: OrderCreated
+
+== Ошибка резервирования товаров ==
+IS -> IS: Проверка остатков
+IS -> IS: Недостаточно товаров
+IS -> K: InventoryInsufficient
+K -> OS: InventoryInsufficient
+K -> NS: InventoryInsufficient
+
+== Компенсационные действия ==
+OS -> OS: Обновление статуса на "Отменен"
+OS -> K: OrderCancelled
+K -> NS: OrderCancelled
+
+NS -> NS: Отправка уведомления об ошибке покупателю
+OS -> MA: 400 Bad Request (недостаточно товаров)
+
+note right of OS
+  Компенсация:
+  - Заказ отменен
+  - Покупатель уведомлен
+  - Никаких резервирований не было
+end note
+
+@enduml
+
+@startuml Payment Failed Saga
+!theme plain
+title Сценарий с ошибкой платежа - Saga-хореография с компенсацией
+
+participant "Mobile App" as MA
+participant "Order Service" as OS
+participant "Inventory Service" as IS
+participant "Payment Service" as PS
+participant "Notification Service" as NS
+participant "Kafka" as K
+
+== Создание заказа ==
+MA -> OS: POST /orders (создание заказа)
+OS -> OS: Сохранение заказа в БД
+OS -> K: OrderCreated
+K -> IS: OrderCreated
+
+== Успешное резервирование ==
+IS -> IS: Проверка остатков
+IS -> IS: Резервирование товаров
+IS -> K: InventoryReserved
+K -> OS: InventoryReserved
+OS -> OS: Обновление статуса заказа
+
+== Подготовка к оплате ==
+OS -> K: OrderReadyForPayment
+K -> PS: OrderReadyForPayment
+PS -> PS: Создание платежной сессии
+
+== Ошибка платежа ==
+MA -> PS: POST /payments (данные карты)
+PS -> PS: Обработка платежа
+PS -> PS: Платеж отклонен (недостаточно средств)
+PS -> K: PaymentFailed
+K -> OS: PaymentFailed
+K -> IS: PaymentFailed
+K -> NS: PaymentFailed
+
+== Компенсационные действия ==
+IS -> IS: Отмена резервирования товаров
+IS -> K: InventoryReservationCancelled
+K -> OS: InventoryReservationCancelled
+
+OS -> OS: Обновление статуса на "Отменен"
+OS -> K: OrderCancelled
+K -> NS: OrderCancelled
+
+NS -> NS: Отправка уведомления об ошибке покупателю
+PS -> MA: 400 Bad Request (ошибка платежа)
+
+note right of OS
+  Компенсация:
+  - Резервирование отменено
+  - Заказ отменен
+  - Покупатель уведомлен
+  - Никаких списаний не было
+end note
+
+@enduml
